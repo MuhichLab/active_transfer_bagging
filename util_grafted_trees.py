@@ -6,6 +6,28 @@ Created on Mon Feb  3 12:35:36 2025
 """
 
 import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+
+def removed_data_indexs(y_big, y_small):
+    """
+    Finds the indices of data points that were removed and retained.
+
+    Parameters:
+    - y_big (numpy.ndarray): Original target variable before pruning.
+    - y_small (numpy.ndarray): Pruned target variable after pruning.
+
+    Returns:
+    - indices_in (numpy.ndarray): Indices of retained data points.
+    - indices_out (numpy.ndarray): Indices of removed data points.
+    """
+    mask_out = ~np.isin(y_big, y_small)  # Mask for removed indices
+    mask_in = np.isin(y_big, y_small)   # Mask for retained indices
+
+    indices_out = np.where(mask_out)[0]  # Indices of removed data points
+    indices_in = np.where(mask_in)[0]    # Indices of retained data points
+
+    return indices_in, indices_out
 
 def organize_into_list(ave_out, ave_in, ave_tot, var_out, var_in, var_tot):
     """
