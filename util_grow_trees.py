@@ -6,9 +6,6 @@ Created on Mon Feb  3 23:20:36 2025
 """
 
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
-
-
 
 def one_grow_cycle(xall, yall, idx_in, idx_out,  model_1, num_trees, togrow, selector):
     """
