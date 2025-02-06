@@ -39,9 +39,9 @@ err_counter=np.zeros(nprn+1)
 
 #Groud Truth
 
-test = BaggingRegressor(estimator=GaussianProcessRegressor(),n_estimators=num_trees,
-                        bootstrap=True,oob_score=True, random_state=rnd_state_seed)
-test.fit(X, y)
+#test = BaggingRegressor(estimator=GaussianProcessRegressor(),n_estimators=num_trees,
+#                        bootstrap=True,oob_score=True, random_state=rnd_state_seed)
+#test.fit(X, y)
 
 
 forest = RandomForestRegressor(n_estimators=num_trees, bootstrap=True, oob_score=True, random_state=rnd_state_seed)
