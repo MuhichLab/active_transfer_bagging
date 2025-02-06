@@ -31,10 +31,6 @@ def removed_data_indexs(y_big, y_small):
 
     return indices_in, indices_out
 
-
-
-
-
 def compute_manual_oob_score(forest, X, y):
     """
     Computes the OOB error manually using extracted OOB samples.
