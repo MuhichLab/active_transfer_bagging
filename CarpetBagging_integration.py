@@ -18,17 +18,11 @@ class CarpetBaggingRegressor(BaggingRegressor):
             estimator=None, 
             n_estimators=100, 
             random_state=None,
-            noise_level=1.0,
-            prune_amt = 50,
-            prune_itt = 10
     ):
         """A Bagging Regressor with pruning and growth capabilities."""
         self.estimator = estimator if estimator is not None else RandomForestRegressor()
         self.n_estimators = n_estimators
         self.random_state = random_state
-        self.noise_level = noise_level
-        self.prune_amt = prune_amt
-        self.prune_itt = prune_itt
         self.estimators_ = []
 
     def _get_estimator(self):
@@ -79,8 +73,7 @@ class CarpetBaggingRegressor(BaggingRegressor):
     def get_exact_tree_samples(self, forest, X):
 
         num_samples = X.shape[0]
-        num_trees = len(forest.estimators_)
-
+        
         tree_samples = []
 
         for i, tree in enumerate(forest.estimators_):
@@ -222,12 +215,105 @@ class CarpetBaggingRegressor(BaggingRegressor):
         mae, ssqe, mse, rmse = self.get_stats_full_model(x_pl, y_pl, forest_2)
 
         return forest_2, mae, ssqe, mse, rmse, nx_pl, ny_pl
+    
+    def one_grow_cycle(self, xall, yall, idx_in, idx_out,  model_1, togrow, selector):
 
-    def down_selection(self, X, y):
+        x_choice=xall[idx_in]
+
+        # Get individual tree predictions
+        individual_tree_predictions = np.array([tree.predict(xall) for tree in model_1.estimators_])
+
+        # Compute mean and variance
+        ave_tot = np.mean(individual_tree_predictions, axis=0)
+        var_tot = np.var(individual_tree_predictions, axis=0)
+        rng_tot = np.max(individual_tree_predictions, axis=0)-np.min(individual_tree_predictions, axis=0)
+        
+        # Compute coefficient of variation
+        cv = np.sqrt(var_tot) / np.abs(ave_tot)
+        
+        
+        tb_chng=np.zeros((len(cv),4))
+        
+        tb_chng[:, 1], tb_chng[:, 0] ,  tb_chng[:, 2], tb_chng[:, 3]   = cv, idx_out, var_tot, rng_tot
+        
+
+        srted=tb_chng[np.argsort(tb_chng[:,selector])]
+
+        # Get sorted indices, selecting the largest `togrow` elements
+
+        temp = srted[-togrow:,0]
+
+        # Update in-sample indices
+        new_indx_in = np.sort(np.concatenate((idx_in, temp)))
+        new_indx_in = new_indx_in.astype(int)
+        filtered_idx_out = np.setdiff1d(idx_out, new_indx_in)
+
+        # Extract new feature matrix
+        new_x = xall[new_indx_in, :]
+        new_y = yall[new_indx_in]
+
+        return  new_x, new_y, new_indx_in, filtered_idx_out
+    
+    
+    def up_selection(self, X, y, num_grows, growth_size, grw_slctr):
+        
+        estimator = self._get_estimator()
+        err_counter=np.zeros((num_grows,2))
+        add_pts=np.zeros((growth_size,num_grows))
+        
+        # error storage
+        err_counter=np.zeros((num_grows+3,2))
+    
+        model = BaggingRegressor(estimator=estimator,
+                                 n_estimators=self.n_estimators,
+                                 bootstrap=True, 
+                                 oob_score=True, 
+                                 random_state=self.random_state)
+        model.fit(X, y)
+        
+        
+        #error tracking
+        mae, ssqe, mse, rmse = self.get_stats_full_model(X, y, model)
+        print("rmse:", rmse)
+
+        err_counter[2,0]= rmse
+        err_counter[2,1]= len(y)
+        
+        idx_in,idx_out=self.removed_data_indexs(y, y) # intilize index_arrays
+        
+        for i in range(num_grows):
+            print(i+1)
+            
+            new_x, new_y, new_indx_in, new_indx_out = self.one_grow_cycle(X,y,idx_in,idx_out,model,growth_size,grw_slctr)
+            
+            #TODO Are we not resetting the model here, shoudl we just retrain the old model??
+            model = BaggingRegressor(estimator=estimator,
+                                     n_estimators=self.n_estimators,
+                                     bootstrap=True, 
+                                     oob_score=True, 
+                                     random_state=self.random_state)
+            model.fit(new_x, new_y)
+
+            #error tracking
+            mae, ssqe, mse, rmse = self.get_stats_full_model(X, y, model)
+            print("rmse:", rmse)
+
+            err_counter[i,0]= rmse
+            err_counter[i,1]= len(new_y)
+            
+            add_pts[:,i]=np.setdiff1d(new_indx_in,idx_in)
+            
+            idx_in=new_indx_in
+            idx_out= new_indx_out
+        
+        return err_counter,add_pts
+    
+
+    def down_selection(self, X, y, prune_itt=10, prune_amt=100):
         
         estimator = self._get_estimator()
         #set counter
-        err_counter=np.zeros(self.prune_itt+1)
+        err_counter=np.zeros(prune_itt+1)
 
         #Groud Truth fit on all Data
 
@@ -249,9 +335,9 @@ class CarpetBaggingRegressor(BaggingRegressor):
         y_crnt=y
         x_crnt=X
 
-        for i in range(self.prune_itt):
+        for i in range(prune_itt):
             print(i+1)
-            new_model, mae, ssqe, mse, rmse, x_new, y_new = self.one_round_of_prune_and_train(old_model, self.n_estimators, y_crnt, x_crnt, self.prune_amt)
+            new_model, mae, ssqe, mse, rmse, x_new, y_new = self.one_round_of_prune_and_train(old_model, self.n_estimators, y_crnt, x_crnt, prune_amt)
         
             #error on full datate given pruned model tracking
             mae, ssqe, mse, rmse = self.get_stats_full_model(X, y, new_model)

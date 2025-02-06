@@ -36,6 +36,9 @@ def main():
     #starting data set, everything small starting from scratch
     x_sml, y_sml, idx_in,idx_out, err_counter=make_starting_batch(num_trees, x,y, rnd_state_seed, err_counter,num_to_prune)
     
+    print(idx_in)
+    print(idx_out)
+    
     new_forest = RandomForestRegressor(n_estimators=num_trees, bootstrap=True, oob_score=True, random_state=rnd_state_seed)
     new_forest.fit(x_sml, y_sml)
     
