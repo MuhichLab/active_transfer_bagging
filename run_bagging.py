@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Wed Feb  5 12:47:22 2025
@@ -28,6 +28,7 @@ num_to_prune=50
 # Generate data
 X, y = generate_multivariate_data(num_samples, noise_level)
 
+print("\nFirst several little drops of data\n")
 
 bagging_model = CarpetBaggingRegressor(estimator=RandomForestRegressor(), 
                                        n_estimators=num_trees, 
@@ -35,7 +36,7 @@ bagging_model = CarpetBaggingRegressor(estimator=RandomForestRegressor(),
                                        noise_level=1.0,
                                        prune_amt = num_to_prune,
                                        prune_itt = nprn)
-bagging_model.down_selection(X, y)
+x_prune, y_prune, error_prue  = bagging_model.down_selection(X, y)
 
 print("\nNow one big drop of data\n")
 
@@ -45,4 +46,4 @@ bagging_model = CarpetBaggingRegressor(estimator=RandomForestRegressor(),
                                        noise_level=1.0,
                                        prune_amt = 500,
                                        prune_itt = 1)
-bagging_model.down_selection(X, y)
+x_big_drop, y_big_drop, error_big = bagging_model.down_selection(X, y)
