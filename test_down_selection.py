@@ -32,8 +32,6 @@ X, y = generate_multivariate_data(num_samples, noise_level)
 #set counter
 err_counter=np.zeros(nprn+1)
 
-
-
 #Groud Truth
 forest = RandomForestRegressor(n_estimators=num_trees, bootstrap=True, oob_score=True, random_state=rnd_state_seed)
 forest.fit(X, y)

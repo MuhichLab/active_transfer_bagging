@@ -6,7 +6,8 @@ Created on Wed Feb  5 12:46:28 2025
 @author: sawilso6
 """
 
-from sklearn.ensemble import BaggingRegressor,RandomForestRegressor
+from sklearn.ensemble import BaggingRegressor
+from sklearn.tree import DecisionTreeRegressor
 import numpy as np
 from sklearn.utils import resample
 from sklearn.metrics import mean_squared_error, r2_score
@@ -20,13 +21,13 @@ class CarpetBaggingRegressor(BaggingRegressor):
             random_state=None,
     ):
         """A Bagging Regressor with pruning and growth capabilities."""
-        self.estimator = estimator if estimator is not None else RandomForestRegressor()
+        self.estimator = estimator if estimator is not None else DecisionTreeRegressor()
         self.n_estimators = n_estimators
         self.random_state = random_state
         self.estimators_ = []
 
     def _get_estimator(self):
-        """Return the base estimator (default is RandomForestRegressor)."""
+        """Return the base estimator (default is DecisionTreeRegressor)."""
         return self.estimator
 
     def removed_data_indexs(self, y_big, y_small):
