@@ -10,6 +10,8 @@ import numpy as np
 from sklearn.svm import SVR
 from sklearn.ensemble import BaggingRegressor
 from sklearn.tree import DecisionTreeRegressor
+from sklearn.tree import ExtraTreeRegressor
+from sklearn.neighbors import KNeighborsRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor
 from generate_multivariate_data import generate_multivariate_data
 from gen_piecewise import generate_data
@@ -38,10 +40,7 @@ x_prune, y_prune, error_prue  = bagging_model.down_selection(X, y, nprn, num_to_
 
 print("\n*********************\nNow one big drop of data\n*********************\n")
 
-bagging_model = CarpetBaggingRegressor(estimator=DecisionTreeRegressor(), 
-                                       n_estimators=num_trees, 
-                                       random_state=None
-                                       )
+bagging_model.construct_model()
 x_big_drop, y_big_drop, error_big = bagging_model.down_selection(X, y, prune_itt=1, prune_amt=1600)
 
 
