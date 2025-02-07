@@ -12,6 +12,48 @@ import numpy as np
 from sklearn.utils import resample
 from sklearn.metrics import mean_squared_error, r2_score
 
+def compute_manual_oob_score(X, y, oob_indices, model):
+
+    num_samples = X.shape[0]
+    # Store predictions for each sample
+    oob_predictions = np.zeros(num_samples)
+    counts = np.zeros(num_samples)  # Count the number of trees predicting each sample
+
+    for tree, indices in zip(model.estimators_, oob_indices):
+        if len(indices) > 0:  # Only process if we have OOB samples
+            tree_preds = tree.predict(X[indices])
+            
+            # Accumulate predictions for each OOB sample
+            oob_predictions[indices] += tree_preds
+            counts[indices] += 1
+
+    # Avoid division by zero by only averaging where counts > 0
+    valid_mask = counts > 0
+    oob_predictions[valid_mask] /= counts[valid_mask]
+
+    # Remove NaNs (samples never predicted by any tree)
+    y_oob = y[valid_mask]
+    oob_predictions = oob_predictions[valid_mask]
+
+    # Compute OOB error metrics
+    manual_oob_mse = mean_squared_error(y_oob, oob_predictions)
+    manual_oob_r2 = r2_score(y_oob, oob_predictions)
+
+    return manual_oob_r2, manual_oob_mse
+
+def get_exact_tree_samples(X, model):
+
+    num_samples = X.shape[0]
+    
+    tree_samples = []
+
+    for i, tree in enumerate(model.estimators_):
+        # Manually extract bootstrap sample indices using sklearn's resample
+        bootstrap_indices = resample(np.arange(num_samples), replace=True, random_state=model.random_state)
+        tree_samples.append(bootstrap_indices)
+
+    return tree_samples
+
 
 class CarpetBaggingRegressor():
     def __init__(
@@ -27,7 +69,7 @@ class CarpetBaggingRegressor():
         self.random_state = random_state
         self.model = model if model is not None else self.construct_model()
 
-    #TODO Not sure this is the proper way to do this, look into how to apprpriatly set a global model
+    #TODO Not sure this is the proper way to do this, look into how to appropriatly set a global model
     # and be able to reset it when you want.
     def construct_model(self):
         self.model = BaggingRegressor(estimator=self.estimator,
@@ -48,61 +90,15 @@ class CarpetBaggingRegressor():
 
         return indices_in, indices_out
 
-    def compute_manual_oob_score(self, model, X, y):
-
-        num_samples = X.shape[0]
-        oob_indices,_ = self.get_oob_samples(model, X)
-
-        # Store predictions for each sample
-        oob_predictions = np.zeros(num_samples)
-        counts = np.zeros(num_samples)  # Count the number of trees predicting each sample
-
-        for tree, indices in zip(model.estimators_, oob_indices):
-            if len(indices) > 0:  # Only process if we have OOB samples
-                tree_preds = tree.predict(X[indices])
-                
-                # Accumulate predictions for each OOB sample
-                oob_predictions[indices] += tree_preds
-                counts[indices] += 1
-
-        # Avoid division by zero by only averaging where counts > 0
-        valid_mask = counts > 0
-        oob_predictions[valid_mask] /= counts[valid_mask]
-
-        # Remove NaNs (samples never predicted by any tree)
-        y_oob = y[valid_mask]
-        oob_predictions = oob_predictions[valid_mask]
-
-        # Compute OOB error metrics
-        manual_oob_mse = mean_squared_error(y_oob, oob_predictions)
-        manual_oob_r2 = r2_score(y_oob, oob_predictions)
-
-        return manual_oob_r2, manual_oob_mse
-
-    def get_exact_tree_samples(self, model, X):
-
-        num_samples = X.shape[0]
-        
-        tree_samples = []
-
-        for i, tree in enumerate(model.estimators_):
-            # Manually extract bootstrap sample indices using sklearn's resample
-            bootstrap_indices = resample(np.arange(num_samples), replace=True, random_state=tree.random_state)
-            tree_samples.append(bootstrap_indices)
-
-        return tree_samples
-
-
-
-    def get_oob_samples(self, model, X):
+    def get_oob_samples(self, X):
 
         num_samples = X.shape[0]
         oob_indices_all = []
         in_sample_indices_all = []
 
-        for tree in model.estimators_:
+        for tree in self.model.estimators_:
             # Retrieve the bootstrap sample indices from each tree
-            rng = np.random.RandomState(tree.random_state)  # Use the tree's random state
+            rng = np.random.RandomState(self.random_state)  # Use the tree's random state
             bootstrap_indices = rng.choice(np.arange(num_samples), size=num_samples, replace=True)
 
             # Compute in-sample indices (training data for this tree)
@@ -160,7 +156,7 @@ class CarpetBaggingRegressor():
     def get_stats_by_data_point(self, individual_tree_predictions,X):
     
         # Get Out-of-Bag (OOB) masks 
-        oob_indices, in_sample_indices= self.get_oob_samples(self.model, X)
+        oob_indices, in_sample_indices= self.get_oob_samples(X)
         num_samples = X.shape[0]
         num_trees = len(self.model.estimators_)
         oob_mask, in_sample_mask= self.generate_oob_in_sample_masks(oob_indices, in_sample_indices, num_trees, num_samples)
@@ -218,12 +214,6 @@ class CarpetBaggingRegressor():
         # Prune data based on sorted importance
         nx_pl, ny_pl = self.prune_my_data(x_pl, y_pl, num_to_prune, 0, tab_chg[:, 0].astype(int))
         # Retrain the random forest on pruned data
-        #TODO Do we retrian the current model or a new model???????
-        # model_2 = BaggingRegressor(estimator=self.estimator,
-        #                          n_estimators=self.n_estimators,
-        #                          bootstrap=True, 
-        #                          oob_score=True, 
-        #                          random_state=self.random_state)
         self.model.fit(nx_pl, ny_pl)
         # Compute error metrics
         mae, ssqe, mse, rmse = self.get_stats_full_model(x_pl, y_pl)
@@ -274,18 +264,12 @@ class CarpetBaggingRegressor():
         
         # error storage
         err_counter=np.zeros((num_grows+3,2))
-    
-        # model = BaggingRegressor(estimator=self.estimator,
-        #                          n_estimators=self.n_estimators,
-        #                          bootstrap=True, 
-        #                          oob_score=True, 
-        #                          random_state=self.random_state)
         
         #TODO Commetn below
         '''
-        This next fir on all the data is strickly for testing and compairision. 
-        Produciton use will not know a full all encomising data set ad this
-        intial fit shoudl be removed
+        This next fit on all the data is strickly for testing and compairision. 
+        Produciton use will not know a full all encomising data set and this
+        intial fit should be removed
         '''
         self.model.fit(xall, yall)                
         #error tracking
@@ -308,12 +292,6 @@ class CarpetBaggingRegressor():
         for i in range(num_grows): 
             new_x, new_y, new_indx_in, new_indx_out = self.one_grow_cycle(xall,yall,idx_in,idx_out,growth_size,grw_slctr)
             
-            #TODO Are we not resetting the model here, shoudl we just retrain the old model??
-            # model = BaggingRegressor(estimator=self.estimator,
-            #                          n_estimators=self.n_estimators,
-            #                          bootstrap=True, 
-            #                          oob_score=True, 
-            #                          random_state=self.random_state)
             self.model.fit(new_x, new_y)
 
             #error tracking
@@ -337,13 +315,6 @@ class CarpetBaggingRegressor():
         err_counter=np.zeros(prune_itt+1)
 
         #Groud Truth fit on all Data
-        #TODO We are reconstructing the model every time this is called
-        #should we just build the model soemwhere else and call from there?
-        # model = BaggingRegressor(estimator=self.estimator,
-        #                          n_estimators=self.n_estimators,
-        #                          bootstrap=True, 
-        #                          oob_score=True, 
-        #                          random_state=self.random_state)
         self.model.fit(X, y)
 
         #error tracking
