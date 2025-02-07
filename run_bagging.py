@@ -43,35 +43,18 @@ bagging_model = CarpetBaggingRegressor(estimator=RandomForestRegressor(),
                                        )
 x_big_drop, y_big_drop, error_big = bagging_model.down_selection(X, y, prune_itt=1, prune_amt=500)
 
-print("\nFirst several little drops of data\n")
 
-bagging_model = CarpetBaggingRegressor(estimator=GaussianProcessRegressor(), 
-                                       n_estimators=num_trees, 
-                                       random_state=None
-                                       )
-x_prune, y_prune, error_prue  = bagging_model.down_selection(X, y, nprn, num_to_prune)
-
-print("\nNow one big drop of data\n")
-
-bagging_model = CarpetBaggingRegressor(estimator=GaussianProcessRegressor(), 
-                                       n_estimators=num_trees, 
-                                       random_state=None
-                                       )
-x_big_drop, y_big_drop, error_big = bagging_model.down_selection(X, y, prune_itt=1, prune_amt=500)
-
-
-
-print("lets practice growing the dataset")
-growth_size=100
-num_grows=5
-grw_slctr=2   #1 - cv, 2 - var, 3 - rng
+# print("lets practice growing the dataset")
+# growth_size=100
+# num_grows=5
+# grw_slctr=2   #1 - cv, 2 - var, 3 - rng
     
-# Generate data
-X, y = generate_multivariate_data(400, 1.0)
+# # Generate data
+# X, y = generate_multivariate_data(400, 1.0)
 
-bagging_model = CarpetBaggingRegressor(estimator=GaussianProcessRegressor(), 
-                                       n_estimators=num_trees, 
-                                       random_state=None
-                                       )
+# bagging_model = CarpetBaggingRegressor(estimator=GaussianProcessRegressor(), 
+#                                        n_estimators=num_trees, 
+#                                        random_state=None
+#                                        )
 
-x_big_drop, y_big_drop, error_big = bagging_model.up_selection(X, y, num_grows, growth_size, grw_slctr)
+# x_big_drop, y_big_drop, error_big = bagging_model.up_selection(X, y, num_grows, growth_size, grw_slctr)

@@ -9,6 +9,7 @@ import numpy as np
 from sklearn.svm import SVR
 from sklearn.ensemble import BaggingRegressor
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor
 import util_grafted_trees as ugf
 from generate_multivariate_data import generate_multivariate_data
@@ -39,9 +40,9 @@ err_counter=np.zeros(nprn+1)
 
 #Groud Truth
 
-#test = BaggingRegressor(estimator=GaussianProcessRegressor(),n_estimators=num_trees,
+# forest = BaggingRegressor(estimator=DecisionTreeRegressor(),n_estimators=num_trees,
 #                        bootstrap=True,oob_score=True, random_state=rnd_state_seed)
-#test.fit(X, y)
+# forest.fit(X, y)
 
 
 forest = RandomForestRegressor(n_estimators=num_trees, bootstrap=True, oob_score=True, random_state=rnd_state_seed)
