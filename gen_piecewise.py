@@ -58,7 +58,7 @@ def generate_data(num_samples, noise_level, x1=1, x2=1):
     # Add Gaussian noise
     y += noise_level * np.random.randn(*y.shape)
 
-    return x1, x2, y
+    return x1, x2, y.ravel()
 
 # Example Usage
 
