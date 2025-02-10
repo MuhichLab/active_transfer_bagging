@@ -28,8 +28,9 @@ nprn=15
 num_to_prune=50
 
 # Generate data
-X, y = generate_multivariate_data(num_samples, noise_level)
-
+#X, y = generate_multivariate_data(num_samples, noise_level)
+x1,x2, y = generate_data(num_samples, noise_level, x1=1, x2=1)
+X = np.hstack((x1,x2))
 print("\n*********************\nFirst several little drops of data\n*********************\n")
 
 bagging_model = CarpetBaggingRegressor(estimator=DecisionTreeRegressor(), 
