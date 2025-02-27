@@ -174,8 +174,8 @@ def kl_divergence(prob_dists):
             p = np.array(avg_prob_dists[dataset1])
             q = np.array(avg_prob_dists[dataset2])
             
-            p /= np.sum(p)  # Ensure normalization
-            q /= np.sum(q)  # Ensure normalization
+            #p /= np.sum(p)  # Ensure normalization
+            #q /= np.sum(q)  # Ensure normalization
             
             kl_matrix[i, j] = entropy(p, q)
             kl_matrix[j, i] = entropy(q, p)

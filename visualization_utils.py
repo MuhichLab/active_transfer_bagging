@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import spearmanr
 import networkx as nx
+import itertools
 
 # Set global style for publication-quality figures
 plt.rcParams.update({
@@ -22,19 +23,49 @@ def save_figure(fig, filename):
     fig.tight_layout()
     fig.savefig(f"{filename}.tiff", format='tiff', dpi=300, bbox_inches='tight')
 
-def plot_accuracy_retention(performance_results, dataset_name):
+#def plot_accuracy_retention(performance_results, dataset_name):
+    #fig, ax = plt.subplots(figsize=(8, 6))
+    #models = set(r[0] for r in performance_results)
+    #for model in models:
+        #subset = [r for r in performance_results if r[0] == model]
+        #iterations, acc_retentions = zip(*[(r[1], r[2]) for r in subset])
+        #ax.plot(iterations, acc_retentions, label=model, linewidth=2, marker='o')
+    #ax.set_xlabel("Pruning Iteration")
+    #ax.set_ylabel("Accuracy Retention (%)")
+    #ax.set_title(f"Accuracy Retention - {dataset_name}")
+    #ax.legend(frameon=True, loc='best')
+    #ax.grid(False)
+    #save_figure(fig, f"accuracy_retention_{dataset_name}")
+    #plt.close()
+
+def plot_rmse_evolution(accuracy_per_step, dataset_name):
     fig, ax = plt.subplots(figsize=(8, 6))
-    models = set(r[0] for r in performance_results)
-    for model in models:
-        subset = [r for r in performance_results if r[0] == model]
-        iterations, acc_retentions = zip(*[(r[1], r[2]) for r in subset])
-        ax.plot(iterations, acc_retentions, label=model, linewidth=2, marker='o')
+    for model_name, accuracy in accuracy_per_step.items():
+        ax.plot(accuracy, label=model_name, linewidth=2, marker='o')
     ax.set_xlabel("Pruning Iteration")
-    ax.set_ylabel("Accuracy Retention (%)")
-    ax.set_title(f"Accuracy Retention - {dataset_name}")
+    ax.set_ylabel("RMSE")
+    ax.set_title(f"RMSE - {dataset_name}")
     ax.legend(frameon=True, loc='best')
     ax.grid(False)
-    save_figure(fig, f"accuracy_retention_{dataset_name}")
+    save_figure(fig, f"RMSE_{dataset_name}")
+    plt.close()
+
+
+def plot_rmse_evolution_growth(error_data):
+    fig, ax = plt.subplots(figsize=(7, 6))
+    color_cycle = itertools.cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+    for dataset_name, error_data in error_data.items():
+        color = next(color_cycle)
+        hline = ax.axhline(y=error_data[0,0], xmin=0, xmax=1, linestyle='dashed', linewidth=2, color=color)
+        color = hline.get_color()
+        ax.plot(np.arange(1,len(error_data[1:,0])+1), error_data[1:,0], label=dataset_name, color=color, linewidth=2, marker='o')
+    
+    ax.set_xlabel("Growth step")
+    ax.set_ylabel("RMSE")
+    ax.set_title(f"RMSE evolution")
+    ax.legend(frameon=True, loc='best')
+    ax.grid(False)
+    save_figure(fig, f"RMSE_evolution_growth")
     plt.close()
 
 def plot_feature_importance_correlation(feature_importances, models_to_test, dataset_name):
@@ -98,13 +129,22 @@ def plot_bootstrap_variance(bootstrap_variance_score, dataset_name):
     plt.close()
 
 def plot_information_gain(information_gain_score, dataset_name):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.boxplot([information_gain_score[model] for model in information_gain_score], widths=0.5, vert=False, patch_artist=True, 
+    fig, ax = plt.subplots(1,2, figsize=(16, 6))
+    ax[0].boxplot([information_gain_score[model] for model in information_gain_score], widths=0.5, vert=False, patch_artist=True, 
             boxprops=dict(facecolor='lightgray', edgecolor='black', linewidth=1.2), labels=information_gain_score.keys())
-    ax.set_ylabel("Model Type")
-    ax.set_xlabel("Information Gain at Each Pruning Step")
-    ax.set_title(f"Information Gain Across Pruning Steps - {dataset_name}")
-    ax.grid(False)
+    ax[0].set_ylabel("Model Type")
+    ax[0].set_xlabel("Information Gain at Each Pruning Step")
+    ax[0].set_title(f"Information Gain Across Pruning Steps - {dataset_name}")
+    ax[0].grid(False)
+    
+    for model_name, info_gain in information_gain_score.items():
+        ax[1].plot(info_gain, label=model_name, linewidth=2, marker='o')
+    ax[1].set_xlabel("Pruning Iteration")
+    ax[1].set_ylabel("Information Gain")
+    ax[1].set_title(f"Information Gain Across Pruning Steps - {dataset_name}")
+    ax[1].legend(frameon=True, loc='best')
+    ax[1].grid(False)
+
     save_figure(fig, f"information_gain_{dataset_name}")
     plt.close()
 
@@ -262,3 +302,28 @@ def visualize_agreement_scores(jaccard_matrix: np.ndarray, method_names: list = 
     ax.set_xlabel("Methods")
     ax.set_ylabel("Methods")
     save_figure(fig, "Agreement scores across methods")
+    plt.close()
+
+
+def plot_probability_distributions(prob_distros, dataset_name, model_name):
+    """
+    Plots the probability distributions of full and pruned dataset predictions.
+
+    Parameters:
+    - prob_dist_full (numpy array): Probability distribution from full dataset predictions.
+    - prob_dist_subset (numpy array): Probability distribution from pruned dataset predictions.
+    - dataset_name (str): Name of the dataset for labeling.
+    - model_name (str): Name of the model for labeling.
+    """
+    fig, ax = plt.subplots(figsize=(8, 6))
+    x_values = np.linspace(0, len(prob_distros[0]), len(prob_distros[0]))  # Create x-axis values
+    for step, prob_distro in prob_distros.items():
+        ax.plot(x_values, prob_distro, label=step, linewidth=2, linestyle="-")
+
+    ax.set_xlabel("Prediction Values")
+    ax.set_ylabel("Probability Density")
+    ax.set_title(f"Probability Distributions - {model_name} ({dataset_name})")
+    ax.legend()
+    #ax.grid(True)
+    save_figure(fig, f"probability_distributions_{model_name}_{dataset_name}")
+    plt.close()
