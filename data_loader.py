@@ -1,82 +1,103 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Feb 18 12:06:26 2025
 
-@author: djriver7
-"""
-
+import os, io, glob, pickle
 import pandas as pd
-import glob
-import os
+import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-import pickle
 
+LFS_SIGNS = ("version https://git-lfs.github.com/spec/v1", "oid sha256:")
 
-def load_data(file="qm9_full.csv",split=0.2,state=None):
+def _is_lfs_pointer(path, n_lines=3):
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            head = "".join([next(f) for _ in range(n_lines)])
+        return any(sig in head for sig in LFS_SIGNS)
+    except Exception:
+        return False
 
+def _to_numeric_matrix(X: pd.DataFrame) -> pd.DataFrame:
+    # Convert non-numeric columns via one-hot encoding (drop_first to reduce collinearity)
+    non_num = [c for c in X.columns if not pd.api.types.is_numeric_dtype(X[c])]
+    if non_num:
+        X = pd.get_dummies(X, columns=non_num, drop_first=True)
+    # Ensure purely numeric
+    for c in X.columns:
+        if not pd.api.types.is_numeric_dtype(X[c]):
+            X[c] = pd.to_numeric(X[c], errors="coerce")
+    # Drop columns that became all-NaN after coercion
+    X = X.dropna(axis=1, how="all")
+    # Fill any residual NaNs with column medians
+    X = X.fillna(X.median(numeric_only=True))
+    return X
+
+def _prep_target(y: pd.Series) -> np.ndarray:
+    # If y is non-numeric (object), factorize to integers
+    if not pd.api.types.is_numeric_dtype(y):
+        y = pd.Series(pd.factorize(y)[0], index=y.index)
+    return y.to_numpy().reshape(-1)
+
+def load_data(file="qm9_full.csv", split=0.2, state=None):
+    """
+    Returns: X_train, X_test, y_train, y_test (all numpy arrays)
+    - Supports .pkl (tuple (X, Y) with Y[:,0] used) and .csv
+    - Detects LFS pointer files and raises an actionable error.
+    """
     if file.endswith(".pkl"):
-        with open(file,'rb') as f:
+        with open(file, "rb") as f:
             X, Y = pickle.load(f)
-            y1 = Y[:,0]
-            y2 = Y[:,1]
-        # Train-test split (80% train, 20% test)
-        X_train, X_test, Y_train, Y_test = train_test_split(X, y1, test_size=split, random_state=state)
+        y = Y[:, 0]  # your original convention
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=split, random_state=state)
+        return np.asarray(X_train), np.asarray(X_test), np.asarray(y_train), np.asarray(y_test)
 
-        X_train_scaled = X_train
-        X_test_scaled = X_test
+    # CSV path
+    matches = glob.glob(file)
+    if not matches:
+        raise FileNotFoundError(f"No file matched pattern: {file}")
 
-    else:
+    path = matches[0]
+    if _is_lfs_pointer(path):
+        raise RuntimeError(
+            f"File appears to be a Git LFS pointer: {path}\n"
+            f"Run:\n  git lfs install\n  git lfs pull\nThen re-run."
+        )
 
-        # Path to your CSV files (update this)
-        csv_files = glob.glob(file)
-    
-        # Dictionary to store processed data
-        data_dict = {}
-    
-        # Load, encode categorical columns, split, and scale data
-        for file in csv_files:
-            filename = os.path.basename(file)
-            if filename == 'qm9_full.csv':
-                df = pd.read_csv(file)  # Load dataset
-            
-                # Using U0 as the target for now
-                X = df.iloc[:, :-4]  # All columns except last four
-                Y = df.iloc[:, -4]   # Fourth to last column as target
-    
-                X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=split, 
-                                                    stratify=X['id_cat'],random_state=state)
-    
-                for set_ in (X_train, X_test):
-                    set_.drop(columns=['system','id_cat'], axis=1,inplace=True)
-    
-            else:
-                df = pd.read_csv(file)  # Load dataset
-            
-                # Assuming the last column is the target (Y)
-                X = df.iloc[:, :-1]  # All columns except last
-                Y = df.iloc[:, -1]   # Last column as target
-            
-                # # Convert categorical target variable Y to numerical if necessary
-                # if Y.dtype == 'O':  # If object (categorical), try converting
-                #     Y = pd.factorize(Y)[0]
-            
-                # # Encode categorical columns in X
-                # for col in X.columns:
-                #     if X[col].dtype == 'O':  # If column is categorical
-                #         X[col] = pd.factorize(X[col])[0]  # Assign unique numbers to each category
-            
-                # Train-test split (80% train, 20% test)
-                X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=split, random_state=state)
-        
-            # # Scale X data (standardization)
-            # scaler = StandardScaler()
-            # X_train = scaler.fit_transform(X_train)
-            # X_test = scaler.transform(X_test)
-        
-            # print(f"Processed {filename} - Train shape: {X_train.shape}, Test shape: {X_test.shape}")
-    
-        
-    # Now you can access data_dict['filename.csv'] for processed datasets.
-    return X_train,X_test,Y_train,Y_test
+    # Special handling for qm9_full.csv
+    if os.path.basename(path) == "qm9_full.csv":
+        df = pd.read_csv(path)
+        X = df.iloc[:, :-4].copy()
+        y = df.iloc[:, -4].copy()  # target U0
+        if "id_cat" not in X.columns:
+            raise ValueError("Expected 'id_cat' column for stratify in qm9_full.csv")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=split, random_state=state, stratify=X["id_cat"]
+        )
+        # Drop non-feature columns post split
+        for set_ in (X_train, X_test):
+            for col in ("system", "id_cat"):
+                if col in set_.columns:
+                    set_.drop(columns=[col], inplace=True)
+        X_train = _to_numeric_matrix(X_train)
+        X_test  = _to_numeric_matrix(X_test)
+        y_train = _prep_target(y_train)
+        y_test  = _prep_target(y_test)
+        return X_train.to_numpy(), X_test.to_numpy(), y_train, y_test
+
+    # Generic CSV: last column is target
+    df = pd.read_csv(path)
+    if df.shape[1] < 2:
+        raise ValueError(f"{path} has <2 columns (did you pull LFS content?): shape={df.shape}")
+
+    X = df.iloc[:, :-1].copy()
+    y = df.iloc[:, -1].copy()
+
+    X = _to_numeric_matrix(X)
+    y = _prep_target(y)
+
+    if X.shape[0] != y.shape[0] or X.shape[0] == 0:
+        raise ValueError(f"Invalid shapes after preprocessing: X={X.shape}, y={y.shape}")
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X.to_numpy(), y, test_size=split, random_state=state
+    )
+    return X_train, X_test, y_train, y_test

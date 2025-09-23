@@ -7,9 +7,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
 from skopt import BayesSearchCV
-from sklearn.metrics import mean_squared_error, r2_score
 
 from data_loader import load_data
 
@@ -34,35 +33,33 @@ mpl.rcParams.update({
 
 # ---------------------- Helpers ----------------------
 def display_name(path):
-    """Pretty title without .csv, underscores to spaces, Title Case."""
     base = os.path.basename(path)
     name = os.path.splitext(base)[0]
     return re.sub(r'\s+', ' ', name.replace('_', ' ')).title()
 
 def family_key(path):
-    """
-    Group datasets that share the same 'family' name.
-    Heuristic:
-      - strip extension
-      - if it ends with _<digits>, drop the numeric suffix
-      - otherwise keep as-is
-    Ex: weather_1 -> weather ; weather_2 -> weather ; pm25 -> pm25
-    """
     stem = os.path.splitext(os.path.basename(path))[0]
-    m = re.match(r'^(.*?)(?:_\d+)?$', stem)  # non-greedy, drop _<digits> if present
+    m = re.match(r'^(.*?)(?:_\d+)?$', stem)
     fam = m.group(1) if m else stem
     return fam.lower()
 
 def family_label(fam):
-    """Left-margin label for a family key, prettified."""
     return fam.replace('_', ' ').title()
+
+def as_array(x):
+    return x.values if hasattr(x, "values") else np.asarray(x)
+
+def box_axes(ax, lw=1.4):
+    """Turn on and thicken all four spines (full box)."""
+    for side in ("top", "right", "left", "bottom"):
+        ax.spines[side].set_visible(True)
+        ax.spines[side].set_linewidth(lw)
 
 # ---------------------- Data discovery ----------------------
 csv_files = glob.glob("./Datasets/*.csv")
 if not csv_files:
     raise FileNotFoundError("No CSV files found in ./Datasets/*.csv")
 
-# Sort by (family, then name) so rows from same family stay together
 csv_files = sorted(csv_files, key=lambda p: (family_key(p), os.path.basename(p).lower()))
 n_rows = len(csv_files)
 
@@ -79,21 +76,31 @@ base_forest = RandomForestRegressor(n_estimators=100, n_jobs=4, random_state=ran
 fig, axs = plt.subplots(n_rows, 2, figsize=(8.8, 3.4 * n_rows),
                         gridspec_kw={'hspace': 0.55, 'wspace': 0.35})
 if n_rows == 1:
-    axs = np.expand_dims(axs, axis=0)  # ensure 2D
+    axs = np.expand_dims(axs, axis=0)
 
-# Draw subtle family labels in the left margin at the start of each group
+# Group label placement (optional)
 y_offsets = []
 families = [family_key(f) for f in csv_files]
 for i, fam in enumerate(families):
     if i == 0 or fam != families[i-1]:
         y_offsets.append((i, fam))
 
+np.set_printoptions(suppress=True, linewidth=140)
+
 # ---------------------- Main loop ----------------------
 for i, file in enumerate(csv_files):
-    # Load data
     X_train, X_test, y_train, y_test = load_data(file=file, split=0.2, state=random_state)
 
-    # Choose model
+    # Preview first 5 rows
+    Xh = as_array(X_train)
+    yh = as_array(y_train).reshape(-1)
+    print("\n=== Sample rows:", os.path.basename(file), "===")
+    print("X_train (first 5):")
+    print(Xh[:5])
+    print("y_train (first 5):")
+    print(yh[:5])
+
+    # Choose/fit
     if tune_bays:
         opt = BayesSearchCV(
             estimator=base_forest,
@@ -108,7 +115,6 @@ for i, file in enumerate(csv_files):
     else:
         model = base_forest
 
-    # --- Fit & predict ---
     model.fit(X_train, y_train)
     pred_train = model.predict(X_train)
     pred_test  = model.predict(X_test)
@@ -117,8 +123,9 @@ for i, file in enumerate(csv_files):
     r2_train = r2_score(y_train, pred_train)
     r2_test  = r2_score(y_test,  pred_test)
 
-    # Axis limits shared per row (so train/test have same scale)
-    all_vals = np.concatenate([y_train, pred_train, y_test, pred_test])
+    # Shared limits per row
+    all_vals = np.concatenate([as_array(y_train), as_array(pred_train),
+                               as_array(y_test),  as_array(pred_test)])
     vmin, vmax = np.min(all_vals), np.max(all_vals)
     pad = 0.02 * (vmax - vmin if vmax > vmin else 1.0)
     lo, hi = vmin - pad, vmax + pad
@@ -132,10 +139,17 @@ for i, file in enumerate(csv_files):
     axL.set_ylabel("Predicted")
     axL.set_title(f"Train – {display_name(file)}", pad=10)
 
-    # Replace RMSE box with R²
+    # Metrics boxes
     axL.text(0.04, 0.96, f"$R^2$ = {r2_train:.2f}",
              transform=axL.transAxes, va='top', ha='left',
              bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="black", alpha=0.9))
+    axL.text(0.96, 0.05, f"N = {len(y_train):,}",
+             transform=axL.transAxes, va='bottom', ha='right',
+             bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.4", alpha=0.85))
+
+    # Grid + BOXED spines
+    axL.grid(True, ls=':', lw=0.6, alpha=0.7)
+    box_axes(axL, lw=1.4)
 
     # ---------------------- Test panel ----------------------
     axR = axs[i, 1]
@@ -149,7 +163,18 @@ for i, file in enumerate(csv_files):
     axR.text(0.04, 0.96, f"$R^2$ = {r2_test:.2f}",
              transform=axR.transAxes, va='top', ha='left',
              bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="black", alpha=0.9))
+    axR.text(0.96, 0.05, f"N = {len(y_test):,}",
+             transform=axR.transAxes, va='bottom', ha='right',
+             bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.4", alpha=0.85))
 
+    axR.grid(True, ls=':', lw=0.6, alpha=0.7)
+    box_axes(axR, lw=1.4)
+
+# # Optional group labels (kept as before)
+# for (row_idx, fam) in y_offsets:
+#     fig.text(0.02, axs[row_idx, 0].get_position().y1 - 0.01,
+#              family_label(fam), ha='left', va='top',
+#              fontsize=13, fontweight='bold')
 
 plt.tight_layout()
 
@@ -160,4 +185,4 @@ plt.savefig(out_png, bbox_inches="tight")
 plt.savefig(out_pdf, bbox_inches="tight")
 plt.show()
 
-print(f"Saved: {out_png}, {out_pdf}")
+print(f"\nSaved: {out_png}, {out_pdf}")
