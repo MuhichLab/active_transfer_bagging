@@ -37,18 +37,7 @@ def _prep_target(y: pd.Series) -> np.ndarray:
         y = pd.Series(pd.factorize(y)[0], index=y.index)
     return y.to_numpy().reshape(-1)
 
-def load_data(file="qm9_full.csv", split=0.2, state=None):
-    """
-    Returns: X_train, X_test, y_train, y_test (all numpy arrays)
-    - Supports .pkl (tuple (X, Y) with Y[:,0] used) and .csv
-    - Detects LFS pointer files and raises an actionable error.
-    """
-    if file.endswith(".pkl"):
-        with open(file, "rb") as f:
-            X, Y = pickle.load(f)
-        y = Y[:, 0]  # your original convention
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=split, random_state=state)
-        return np.asarray(X_train), np.asarray(X_test), np.asarray(y_train), np.asarray(y_test)
+def load_data(file, split=0.2, state=None):
 
     # CSV path
     matches = glob.glob(file)
@@ -61,27 +50,6 @@ def load_data(file="qm9_full.csv", split=0.2, state=None):
             f"File appears to be a Git LFS pointer: {path}\n"
             f"Run:\n  git lfs install\n  git lfs pull\nThen re-run."
         )
-
-    # Special handling for qm9_full.csv
-    if os.path.basename(path) == "qm9_full.csv":
-        df = pd.read_csv(path)
-        X = df.iloc[:, :-4].copy()
-        y = df.iloc[:, -4].copy()  # target U0
-        if "id_cat" not in X.columns:
-            raise ValueError("Expected 'id_cat' column for stratify in qm9_full.csv")
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=split, random_state=state, stratify=X["id_cat"]
-        )
-        # Drop non-feature columns post split
-        for set_ in (X_train, X_test):
-            for col in ("system", "id_cat"):
-                if col in set_.columns:
-                    set_.drop(columns=[col], inplace=True)
-        X_train = _to_numeric_matrix(X_train)
-        X_test  = _to_numeric_matrix(X_test)
-        y_train = _prep_target(y_train)
-        y_test  = _prep_target(y_test)
-        return X_train.to_numpy(), X_test.to_numpy(), y_train, y_test
 
     # Generic CSV: last column is target
     df = pd.read_csv(path)

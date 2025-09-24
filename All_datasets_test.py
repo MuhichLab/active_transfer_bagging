@@ -33,9 +33,23 @@ mpl.rcParams.update({
 
 # ---------------------- Helpers ----------------------
 def display_name(path):
+    """
+    Pretty display name:
+    - Replace underscores with spaces
+    - Preserve acronyms (all-caps) and tokens with digits (ERA5, QM9, LDA)
+    - Capitalize only normal words
+    """
     base = os.path.basename(path)
     name = os.path.splitext(base)[0]
-    return re.sub(r'\s+', ' ', name.replace('_', ' ')).title()
+    words = name.replace('_', ' ').split()
+    fixed = []
+    for w in words:
+        if w.isupper() or any(ch.isdigit() for ch in w):
+            fixed.append(w)       # preserve acronyms / numbers
+        else:
+            fixed.append(w.capitalize())
+    return " ".join(fixed)
+
 
 def family_key(path):
     stem = os.path.splitext(os.path.basename(path))[0]
@@ -70,7 +84,7 @@ search_space = {
     'min_samples_leaf': (1, 20),
 }
 tune_bays = False
-base_forest = RandomForestRegressor(n_estimators=100, n_jobs=4, random_state=random_state)
+base_forest = RandomForestRegressor(n_estimators=100, n_jobs=8, random_state=random_state)
 
 # ---------------------- Figure layout ----------------------
 fig, axs = plt.subplots(n_rows, 2, figsize=(8.8, 3.4 * n_rows),
@@ -153,7 +167,7 @@ for i, file in enumerate(csv_files):
 
     # ---------------------- Test panel ----------------------
     axR = axs[i, 1]
-    axR.scatter(y_test, pred_test, s=16, alpha=0.6, edgecolor='none')
+    axR.scatter(y_test, pred_test, c=('red',0.3), s=16, alpha=0.6, edgecolor='none')
     axR.plot([lo, hi], [lo, hi], ls='--', c='k', lw=1.2)
     axR.set_xlim(lo, hi); axR.set_ylim(lo, hi)
     axR.set_xlabel("Actual")
