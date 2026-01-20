@@ -1,0 +1,13 @@
+[project]
+name = "atbagging"
+version = "0.1.0"
+description = "Scikit-Learn Bagging Regressor wrapper with added downselection functionaliy via the ATBagging methodology"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dataclasses>=0.8",
+    "dppy>=0.3.3",
+    "numpy>=2.4.1",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.0",
+]
