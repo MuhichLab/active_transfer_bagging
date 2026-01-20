@@ -319,8 +319,9 @@ class ATBagging():
             λ = np.clip(evals, 0.0, None)
             return float((sp*λ/(1.+sp*λ)).sum())
 
+        n_target = n
         sample = np.empty(0)
-        while sample.size < n:
+        while sample.size < n_target:
             s = brenth(
                 lambda s_: expected_size(s_) - n,
                 -1e7, 1e70, 
@@ -339,17 +340,14 @@ class ATBagging():
             pdpp = FiniteDPP('correlation', K=Q@Q.T, projection=True)
             sample = np.array(pdpp.sample_exact())
             scores = np.array(pdpp.K).copy()
-            if sample.size < n:
+            if sample.size < n_target:
                 if verbose:
-                    print(f"DPP sampling failed: {sample.size} samples less than target {n}")
+                    print(f"DPP sampling failed: {sample.size} samples less than target {n_target}")
                 n += increment_size
-            elif sample.size > n:
-                sample = sample[:n]
 
+        sample = sample[:n_target]
         scores = scores/max(scores.sum(), 1e-300)
         weights = scores[sample]/n
-        if verbose:
-            print(f"DPP sample size = {sample.size} (target {n})")
         return sample, weights
 
     def _dpp_sampler_map_greedy(
