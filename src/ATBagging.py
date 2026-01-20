@@ -322,10 +322,10 @@ class ATBagging():
         sample = np.empty(0)
         while sample.size < n:
             s = brenth(
-                    lambda s_: expected_size(s_) - n,
-                    -1e7, 1e70, 
-                    maxiter=max_brenth_iter
-                    )
+                lambda s_: expected_size(s_) - n,
+                -1e7, 1e70, 
+                maxiter=max_brenth_iter
+            )
             sp = _softplus_stable(s)
             λ = np.clip(evals, 0., None)
             denom = np.sqrt(np.maximum(sp*λ, 1e-300))
@@ -342,7 +342,7 @@ class ATBagging():
             if sample.size < n:
                 if verbose:
                     print(f"DPP sampling failed: {sample.size} samples less than target {n}")
-                N += increment_size
+                n += increment_size
             elif sample.size > n:
                 sample = sample[:n]
 
