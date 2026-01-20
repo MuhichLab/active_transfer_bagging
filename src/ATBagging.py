@@ -255,6 +255,8 @@ class ATBagging():
         w = rng.normal(0., 1./tau, size=(n_fourier_features, X.shape[1]))
         b = rng.uniform(0., 2.*np.pi, size=n_fourier_features)
         B = np.sqrt(2./n_fourier_features)*np.cos(X@w.T + b)
+        if tau<1e-5:
+            B = np.linalg.qr(B,mode='reduced')[0]
         return B
 
     def _dpp_sampler_exact(
@@ -266,6 +268,7 @@ class ATBagging():
             n_fourier_features: int = 2000,
             rng: np.random.Generator | None = None,
             max_brenth_iter: int = 20000,
+            increment_size: int = 50,
             verbose: bool = False,
             ) -> tuple[np.ndarray, np.ndarray]:
         '''
@@ -290,6 +293,9 @@ class ATBagging():
             Numpy random number generator for use in importance sampling
         max_brenth_iter : int
             Maximum number of iterations to use in the internal Brent root finding step
+        increment_size : int
+            Size to increment the expected sample size by each iteration
+            Default is 50
         verbose : bool
             Print
 
@@ -304,7 +310,7 @@ class ATBagging():
             rng = np.random.default_rng(self.random_seed)
         R_eff = int(max(n_fourier_features, 2*n))
         B = self._random_fourier_features(X, tau=tau, n_fourier_features=R_eff, rng=rng)
-        B = B*q[:,None]
+        B = B*np.sqrt(q)[:,None]
         evals, evecs = np.linalg.eigh(B.T@B)
 
         def expected_size(s)->float:
@@ -313,35 +319,32 @@ class ATBagging():
             λ = np.clip(evals, 0.0, None)
             return float((sp*λ/(1.+sp*λ)).sum())
 
-        s = brenth(
-                lambda s_: expected_size(s_) - n,
-                -1e7, 1e70, 
-                maxiter=max_brenth_iter
-                )
-        sp = _softplus_stable(s)
-
-        λ = np.clip(evals, 0., None)
-        denom = np.sqrt(np.maximum(sp*λ, 1e-300))
-        L_evecs = np.nan_to_num((B@evecs)/denom, nan=0., posinf=0., neginf=0.)
-
-        p = sp*λ/(1+sp*λ)
-        sel_inds = np.where(rng.binomial(1, p))[0]
-        if sel_inds.size == 0:
-            sel_inds = np.argsort(-p)[:n]
-
-        V = L_evecs[:,sel_inds]
-        Q, _ = np.linalg.qr(V, mode='reduced')
-
-        pdpp = FiniteDPP('correlation', K=Q@Q.T, projection=True)
-        sample = np.array(pdpp.sample_exact())
-        scores = np.array(pdpp.K).copy()
-        if sample.size < n:
-            marg = np.diag(scores)
-            order = np.argsort(-marg)
-            pad = [i for i in order if i not in set(sample)]
-            sample = np.c_[sample, np.asarray(pad[:(n-sample.size)])].astype(int)
-        elif sample.size > n:
-            sample = sample[:n]
+        sample = np.empty(0)
+        while sample.size < n:
+            s = brenth(
+                    lambda s_: expected_size(s_) - n,
+                    -1e7, 1e70, 
+                    maxiter=max_brenth_iter
+                    )
+            sp = _softplus_stable(s)
+            λ = np.clip(evals, 0., None)
+            denom = np.sqrt(np.maximum(sp*λ, 1e-300))
+            L_evecs = np.nan_to_num((B@evecs)/denom, nan=0., posinf=0., neginf=0.)
+            p = sp*λ/(1+sp*λ)
+            sel_inds = np.where(rng.binomial(1, p))[0]
+            if sel_inds.size == 0:
+                sel_inds = np.argsort(-p)[:n]
+            V = L_evecs[:,sel_inds]
+            Q, _ = np.linalg.qr(V, mode='reduced')
+            pdpp = FiniteDPP('correlation', K=Q@Q.T, projection=True)
+            sample = np.array(pdpp.sample_exact())
+            scores = np.array(pdpp.K).copy()
+            if sample.size < n:
+                if verbose:
+                    print(f"DPP sampling failed: {sample.size} samples less than target {n}")
+                N += increment_size
+            elif sample.size > n:
+                sample = sample[:n]
 
         scores = scores/max(scores.sum(), 1e-300)
         weights = scores[sample]/n
@@ -400,7 +403,7 @@ class ATBagging():
             raise ValueError(f"n must be in [1, N]; got n={n}, N={N}")
         R_eff = max(n_fourier_features, 2*n)
         B = self._random_fourier_features(X, tau=tau, n_fourier_features=R_eff, rng=rng)
-        F = B*q[:, None]
+        F = B*np.sqrt(q)[:, None]
         gains = np.einsum("ij,ij->i", F, F, optimize=True)
         selected = np.empty(n, dtype=int)
         C = np.zeros((n,N))
