@@ -231,12 +231,12 @@ class ATBagging():
         return q**power
 
     def _random_fourier_features(
-        self,
-        X: np.ndarray,
-        tau: float,
-        n_fourier_features: int,
-        rng: np.random.Generator,
-    ) -> np.ndarray:
+            self,
+            X: np.ndarray,
+            tau: float,
+            n_fourier_features: int,
+            rng: np.random.Generator,
+            ) -> np.ndarray:
         '''
         Random Fourier Features for squared-exponential kernel
         Returns B with shape (n, R)
@@ -257,17 +257,17 @@ class ATBagging():
         B = np.sqrt(2./n_fourier_features)*np.cos(X@w.T + b)
         return B
 
-    def _dpp_sampler(
-        self,
-        q: np.ndarray,
-        X: np.ndarray,
-        tau: float,
-        n: int,
-        n_fourier_features: int = 2000,
-        rng: np.random.Generator | None = None,
-        max_brenth_iter: int = 20000,
-        verbose: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def _dpp_sampler_exact(
+            self,
+            q: np.ndarray,
+            X: np.ndarray,
+            tau: float,
+            n: int,
+            n_fourier_features: int = 2000,
+            rng: np.random.Generator | None = None,
+            max_brenth_iter: int = 20000,
+            verbose: bool = False,
+            ) -> tuple[np.ndarray, np.ndarray]:
         '''
         Backend DPP creation & sampling.
         Builds an informativeness-modified L-ensemble DPP & samples from it via DPPy
@@ -312,12 +312,12 @@ class ATBagging():
             sp = _softplus_stable(s)
             λ = np.clip(evals, 0.0, None)
             return float((sp*λ/(1.+sp*λ)).sum())
-        
+
         s = brenth(
-            lambda s_: expected_size(s_) - n,
-            -1e7, 1e70, 
-            maxiter=max_brenth_iter
-        )
+                lambda s_: expected_size(s_) - n,
+                -1e7, 1e70, 
+                maxiter=max_brenth_iter
+                )
         sp = _softplus_stable(s)
 
         λ = np.clip(evals, 0., None)
@@ -349,17 +349,101 @@ class ATBagging():
             print(f"DPP sample size = {sample.size} (target {n})")
         return sample, weights
 
-    def downselect(
+    def _dpp_sampler_map_greedy(
         self,
+        q: np.ndarray,
+        X: np.ndarray,
+        tau: float,
         n: int,
-        Xstar: np.ndarray | None = None,
-        tau: float = 2.0,
-        n_rand_fourier_features: int = 2000,
-        q_power: float = 2.0,
+        n_fourier_features: int = 2000,
+        rng: np.random.Generator | None = None,
         eps: float = 1e-12,
         verbose: bool = False,
-        rng: np.random.Generator | None = None,
-    ):
+    ) -> tuple[np.ndarray, np.ndarray]:
+        '''
+        Deterministic greedy MAP inference for an L-ensemble k-DPP
+        Implements Algorithm 1 of 
+            Fast Greedy MAP Inference for Determinantal Point
+            Process to Improve Recommendation Diversity
+            Chen, Zhang, Zhou NeurIPs 2018
+
+        Parameters
+        ----------
+        q : ndarray, shape (N,)
+            (Transformed) informativeness scores
+        X : ndarray, shape (N, d)
+            Dataset from which points are selected (training set)
+        tau : float
+            Length-scale hyperparameter for similarity kernel
+        n : int
+            Desired subset size
+        n_fourier_features : int
+            Number of random Fourier features for the SE kernel approximation
+        rng : Optional, numpy.random.Generator
+            RNG used for RFF construction. If None, uses class random_seed.
+        eps : float
+            Numerical floor for marginal gains
+        verbose : bool
+            Print progress/debug info
+
+        Returns
+        -------
+        indices : ndarray, shape (n,)
+            Indices of selected points
+        scores : ndarray, shape (n,)
+            Per-selected-point scores.
+        '''
+        if rng is None:
+            rng = np.random.default_rng(self.random_seed)
+        N = X.shape[0]
+        if n <= 0 or n > N:
+            raise ValueError(f"n must be in [1, N]; got n={n}, N={N}")
+        R_eff = max(n_fourier_features, 2*n)
+        B = self._random_fourier_features(X, tau=tau, n_fourier_features=R_eff, rng=rng)
+        F = B*q[:, None]
+        gains = np.einsum("ij,ij->i", F, F, optimize=True)
+        selected = np.empty(n, dtype=int)
+        C = np.zeros((n,N))
+        available = np.ones(N, dtype=bool)
+        for j in range(n):
+            gains_masked = np.where(available, gains, -np.inf)
+            i = int(np.argmax(gains_masked))
+            best_gain = float(gains_masked[i])
+            if not np.isfinite(best_gain) or best_gain <= eps:
+                if verbose:
+                    print(f"[MAP] early stop at j={j}, best_gain={best_gain:.3e}; padding.")
+                remaining = np.where(available)[0]
+                order = np.lexsort((gains[remaining], q[remaining]))[::-1]
+                fill = remaining[order][: (n - j)]
+                selected[j:] = fill
+                break
+            selected[j] = i
+            available[i] = False
+            dot = F@F[i]
+            if j > 0:
+                ci = C[:j,i]
+                dot = dot-ci@C[:j,:] 
+            inv_sqrt = 1/np.sqrt(best_gain)
+            C[j, :] = dot*inv_sqrt
+            gains = gains-C[j,:]**2
+            gains[i] = -np.inf
+            if verbose and (j < 5 or (j + 1) % 10 == 0 or j == n - 1):
+                print(f"[MAP-greedy] step {j+1}/{n}: picked {i}, gain={best_gain:.3e}")
+        scores = q[selected].copy()
+        return selected.astype(int), scores
+
+    def downselect(
+            self,
+            n: int,
+            Xstar: np.ndarray | None = None,
+            tau: float = 2.0,
+            n_rand_fourier_features: int = 2000,
+            q_power: float = 2.0,
+            eps: float = 1e-12,
+            verbose: bool = False,
+            rng: np.random.Generator | None = None,
+            sampler: str = 'exact',
+            ):
         '''
         Sample n informative & diverse points from the training set.
         Calculates the informativeness for each point & a feature-space correlation 
@@ -385,6 +469,11 @@ class ATBagging():
         rng : Optional, numpy.random.Generator
             Numpy random number generator, if None one is created and seeded with the 
             class's `random_seed` attribute
+        sampler : str
+            Which DPP sampling algorithm to use.
+            Options are 'exact' and 'deterministic'.
+            'exact' generates a true DPP sample using the DPPy sampling algorithm
+            'deterministic' generates a deterministic size-n MAP approximate subset
         '''
         if not self.is_fit:
             raise ValueError('Bagging Ensemble must be fit prior to downselection')
@@ -395,12 +484,18 @@ class ATBagging():
             Xstar = np.asarray(Xstar)
         if n<=0 or n>len(Xtr):
             raise ValueError(f"n must be in [1, n_train]; got n={n}, n_train={len(Xtr)}")
-        KLs = self.calculate_informativeness(Xstar, eps=eps, verbose=verbose)
+        if self.raw_scores is None:
+            KLs = self.calculate_informativeness(Xstar, eps=eps, verbose=verbose)
+        else:
+            KLs = self.raw_scores
         q = self._kl_to_q(KLs, power=q_power)
         if not np.isfinite(q).all() or q.sum()<=0:
             q = np.ones_like(q)
         q = q/q.sum()
-        inds, wts = self._dpp_sampler(
+        sampler_fn = self._dpp_sampler_exact \
+                    if sampler=='exact' \
+                    else self._dpp_sampler_map_greedy
+        inds, wts = sampler_fn(
             q=q,
             X=Xtr,
             tau=tau,
@@ -411,8 +506,6 @@ class ATBagging():
         )
         return DownselectResult(
             indices=inds,
-            scores=wts,
+            scores=self.raw_scores,
         )
-
-    
 
