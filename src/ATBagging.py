@@ -7,6 +7,7 @@ from sklearn.utils import check_random_state
 from scipy.optimize import brenth
 from dppy.finite_dpps import FiniteDPP
 from dataclasses import dataclass
+from tqdm import tqdm
 
 def logpdet(A):
     '''
@@ -89,7 +90,7 @@ class ATBagging():
         self.Xtr = X
         self.ytr = y
         self.n_train = len(X)
-        self.fit
+        self.is_fit = True
         return self
 
     def predict(self, X: ArrayLike):
@@ -193,9 +194,10 @@ class ATBagging():
         inb_mask = np.array([np.isin(all_inds, i) for i in inb]).T
         preds_Xstar = self.get_ensemble_predictions(Xstar)
         KLs = np.zeros(self.n_train)
-        for i in range(self.n_train):
-            if verbose:
-                print("kl", i)
+        for i in tqdm(range(self.n_train), 
+                      disable=not verbose,
+                      desc="Calculating informativeness scores",
+                      total=self.n_train):
             mask_inb = inb_mask[i]
             mask_oob = ~mask_inb
             # if point is in-bag for all estimators, KL undefined -> set 0
@@ -225,7 +227,7 @@ class ATBagging():
         Transform informativeness scores via power transform
         '''
         q = KLs - np.min(KLs)
-        q = max(q,0)
+        q = np.maximum(q,0)
         return q**power
 
     def _random_fourier_features(
@@ -260,7 +262,7 @@ class ATBagging():
         q: np.ndarray,
         X: np.ndarray,
         tau: float,
-        k: int,
+        n: int,
         n_fourier_features: int = 2000,
         rng: np.random.Generator | None = None,
         max_brenth_iter: int = 20000,
@@ -279,7 +281,7 @@ class ATBagging():
         tau : float 
             Length scale hyperparameter for data similarity kernel
             Controls how strong the repulsive effect of the DPP will be
-        k : int
+        n : int
             Desired subset size
         n_fourier_features : int
             Number of random Fourier features to use in the approximation to the SE 
@@ -300,32 +302,32 @@ class ATBagging():
         '''
         if rng is None:
             rng = np.random.default_rng(self.random_seed)
-        R_eff = int(max(n_fourier_features, 2*k))
+        R_eff = int(max(n_fourier_features, 2*n))
         B = self._random_fourier_features(X, tau=tau, n_fourier_features=R_eff, rng=rng)
         B = B*q[:,None]
         evals, evecs = np.linalg.eigh(B.T@B)
 
         def expected_size(s)->float:
-            # Root solve for s such that expected size matches k
+            # Root solve for s such that expected size matches n
             sp = _softplus_stable(s)
             λ = np.clip(evals, 0.0, None)
             return float((sp*λ/(1.+sp*λ)).sum())
         
         s = brenth(
-            lambda s_: expected_size(s_) - k,
+            lambda s_: expected_size(s_) - n,
             -1e7, 1e70, 
             maxiter=max_brenth_iter
         )
         sp = _softplus_stable(s)
 
         λ = np.clip(evals, 0., None)
-        denom = np.sqrt(max(sp*λ, 1e-300))
+        denom = np.sqrt(np.maximum(sp*λ, 1e-300))
         L_evecs = np.nan_to_num((B@evecs)/denom, nan=0., posinf=0., neginf=0.)
 
         p = sp*λ/(1+sp*λ)
         sel_inds = np.where(rng.binomial(1, p))[0]
         if sel_inds.size == 0:
-            sel_inds = np.argsort(-p)[:k]
+            sel_inds = np.argsort(-p)[:n]
 
         V = L_evecs[:,sel_inds]
         Q, _ = np.linalg.qr(V, mode='reduced')
@@ -333,40 +335,39 @@ class ATBagging():
         pdpp = FiniteDPP('correlation', K=Q@Q.T, projection=True)
         sample = np.array(pdpp.sample_exact())
         scores = np.array(pdpp.K).copy()
-        if sample.size < k:
+        if sample.size < n:
             marg = np.diag(scores)
             order = np.argsort(-marg)
             pad = [i for i in order if i not in set(sample)]
-            sample = np.c_[sample, np.asarray(pad[:(k-sample.size)])].astype(int)
-        elif sample.size > k:
-            sample = sample[:k]
+            sample = np.c_[sample, np.asarray(pad[:(n-sample.size)])].astype(int)
+        elif sample.size > n:
+            sample = sample[:n]
 
         scores = scores/max(scores.sum(), 1e-300)
-        weights = scores[sample]/k
+        weights = scores[sample]/n
         if verbose:
-            print(f"DPP sample size = {sample.size} (target {k})")
+            print(f"DPP sample size = {sample.size} (target {n})")
         return sample, weights
 
     def downselect(
         self,
-        k: int,
+        n: int,
         Xstar: np.ndarray | None = None,
         tau: float = 2.0,
         n_rand_fourier_features: int = 2000,
         q_power: float = 2.0,
         eps: float = 1e-12,
-        return_kl: bool = True,
         verbose: bool = False,
         rng: np.random.Generator | None = None,
     ):
         '''
-        Sample k informative & diverse points from the training set.
+        Sample n informative & diverse points from the training set.
         Calculates the informativeness for each point & a feature-space correlation 
         matrix, then uses this to parameterize a DPP, from which the set is sampled.
 
         Parameters
         ----------
-        k : int
+        n : int
             Desired subset size
         Xstar : Optional, ndarray
             Probe points over which to measure prediction distribution shifts.
@@ -379,8 +380,6 @@ class ATBagging():
             Power used in informativeness score transformation
         eps : float
             Ridge parameter for the stability of determinant calculations
-        return_kl : bool
-            Toggle returning the (non-transformed) informativeness scores
         verbose : bool
             Toggle printing intermediate information for debugging & tracking purposes
         rng : Optional, numpy.random.Generator
@@ -394,8 +393,8 @@ class ATBagging():
             Xstar = Xtr
         else:
             Xstar = np.asarray(Xstar)
-        if k<=0 or k>len(Xtr):
-            raise ValueError(f"k must be in [1, n_train]; got k={k}, n_train={len(Xtr)}")
+        if n<=0 or n>len(Xtr):
+            raise ValueError(f"n must be in [1, n_train]; got n={n}, n_train={len(Xtr)}")
         KLs = self.calculate_informativeness(Xstar, eps=eps, verbose=verbose)
         q = self._kl_to_q(KLs, power=q_power)
         if not np.isfinite(q).all() or q.sum()<=0:
@@ -405,7 +404,7 @@ class ATBagging():
             q=q,
             X=Xtr,
             tau=tau,
-            k=k,
+            n=n,
             n_fourier_features=n_rand_fourier_features,
             rng=rng,
             verbose=verbose,

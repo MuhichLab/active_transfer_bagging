@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "atbagging"
 version = "0.1.0"
@@ -8,6 +12,12 @@ dependencies = [
     "dataclasses>=0.8",
     "dppy>=0.3.3",
     "numpy>=2.4.1",
+    "polars>=1.37.1",
     "scikit-learn>=1.8.0",
     "scipy>=1.17.0",
+    "tqdm>=4.67.1",
 ]
+
+[tool.setuptools]
+py-modules = ["ATBagging"]
+package-dir = {"" = "src"}

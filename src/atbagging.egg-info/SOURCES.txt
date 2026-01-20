@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+src/ATBagging.py
+src/atbagging.egg-info/PKG-INFO
+src/atbagging.egg-info/SOURCES.txt
+src/atbagging.egg-info/dependency_links.txt
+src/atbagging.egg-info/requires.txt
+src/atbagging.egg-info/top_level.txt
