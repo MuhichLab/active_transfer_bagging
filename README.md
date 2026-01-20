@@ -17,6 +17,9 @@ The dependencies include standard scientific python packages, i.e.
 As well as the DPP sampling functionality provided by the [DPPy package](https://github.com/guilgautier/DPPy)
 
 # Examples
+A working example with data is provided in the Examples/ directory.
+
+The most basic functionality can be summarized in the following few lines.
 With a dataset expressed as numpy ndarrays `X` and `y`, and a test set called `Xstar`:
 ```
 atb = ATBagging(n_estimators=100, random_seed=1234)
