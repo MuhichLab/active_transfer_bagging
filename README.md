@@ -1,10 +1,10 @@
-# Image spot hold
-<img src="ASAP_logo.png" align="middle" />
+# Active-Transfer Bagging
 
-Associated Journal Article  -  https://XXXXXXXXXXXXXXXXXXXXXX
+Associated Article  -  https://arxiv.org/[arxiv-id when submitted]
 
 # Install
-ATBagging can be installed using pip via
+ATBagging can be installed using pip via  
+
 ```
 pip install "git+https://github.com/MuhichLab/transactive_learning.git"
 ```
@@ -14,13 +14,15 @@ The dependencies include standard scientific python packages, i.e.
 - numpy
 - scikit-learn
 - scipy
-As well as the DPP sampling functionality provided by the [DPPy package](https://github.com/guilgautier/DPPy)
+
+And the nonstandard [DPPy package](https://github.com/guilgautier/DPPy) to provide basic DPP sampling functionality.
 
 # Examples
 A working example with data is provided in the Examples/ directory.
 
 The most basic functionality can be summarized in the following few lines.
-With a dataset expressed as numpy ndarrays `X` and `y`, and a test set called `Xstar`:
+With a dataset expressed as numpy ndarrays `X` and `y`, and a test set called `Xstar`:  
+
 ```
 atb = ATBagging(n_estimators=100, random_seed=1234)
 atb.fit(X, y)
