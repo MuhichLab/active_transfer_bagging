@@ -3,25 +3,27 @@
 
 Associated Journal Article  -  https://XXXXXXXXXXXXXXXXXXXXXX
 
-# Dependencies
-List dependecies here as we compile the code (example):
-- pymatgen v >= 2022.0.17 : Older versions of pymatgen have not been tested
-- If you have pymatgen installed all other ASAP dependencies should also be installed. However, two dependecies you'll want to verify:
-- python v >= 3.8
-- sympy 
-
 # Install
+ATBagging can be installed using pip via
+```
+pip install "git+https://github.com/MuhichLab/transactive_learning.git"
+```
 
-The current version of ASAP can be installed via pip:: 
-
-    pip install ASAPy
-
-Currently this installation does NOT install the dependencies. Please ensure you have the above dependencies in place.
+# Dependencies
+The dependencies include standard scientific python packages, i.e.
+- numpy
+- scikit-learn
+- scipy
+As well as the DPP sampling functionality provided by the [DPPy package](https://github.com/guilgautier/DPPy)
 
 # Examples
-Future examples will be presented here. As of now we have a downloadable python script that gives an example run through of implementing ASAP::
-	
-	run_asap.py
+A working example with data is provided in the Examples/ directory.
 
-Please note the accompanying structure files (POSCAR & POSCAR_O2) will also need to be present in the directory that run_asap.py is located. 
-
+The most basic functionality can be summarized in the following few lines.
+With a dataset expressed as numpy ndarrays `X` and `y`, and a test set called `Xstar`:
+```
+atb = ATBagging(n_estimators=100, random_seed=1234)
+atb.fit(X, y)
+downselection_results = atb.downselect(n=30, Xstar=Xstar)
+indices = downselection_results.indices
+```
