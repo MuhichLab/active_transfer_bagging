@@ -6,7 +6,7 @@ Associated Article  -  https://arxiv.org/[arxiv-id when submitted]
 ATBagging can be installed using pip via  
 
 ```
-pip install "git+https://github.com/MuhichLab/transactive_learning.git"
+pip install "git+https://github.com/MuhichLab/active_transfer_bagging.git"
 ```
 
 # Dependencies
