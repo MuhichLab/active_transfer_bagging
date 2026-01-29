@@ -10,12 +10,8 @@ pip install "git+https://github.com/MuhichLab/transactive_learning.git"
 ```
 
 # Dependencies
-The dependencies include standard scientific python packages, i.e.
-- numpy
-- scikit-learn
-- scipy
-
-And the nonstandard [DPPy package](https://github.com/guilgautier/DPPy) to provide basic DPP sampling functionality.
+The dependencies include standard scientific python packages, i.e. numpy, scikit-learn, and scipy, along with the 
+nonstandard [DPPy package](https://github.com/guilgautier/DPPy) to provide basic DPP sampling functionality.
 
 # Examples
 A working example with data is provided in the Examples/ directory.
