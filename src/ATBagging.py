@@ -510,3 +510,36 @@ class ATBagging():
             scores=self.raw_scores,
         )
 
+    def dpp_qbc(
+        self,
+        X: np.ndarray,
+        preds: np.ndarray,
+        tau: int =2,
+        n: int =10,
+        sampler: str = 'exact'
+        ):
+        '''
+        Determinantal Point Process combining input space and predictive variance
+        |- DPP is parameterized by a rbf kernel times the variance in predictions
+        X: Pool features (Xpool)
+        preds: tree predictions on Xpool
+        tau: length scale for rbf kernel
+        n: number of samples to select  
+        '''
+        sampler_fn = self._dpp_sampler_exact \
+                    if sampler=='exact' \
+                    else self._dpp_sampler_map_greedy
+        q = abs(preds.std(1))
+        samples,weights = sampler_fn(q/q.sum(),X,tau=tau,n=n)
+        return samples,weights
+    
+    def qbc(
+            self,
+            preds: np.ndarray,
+            N: int = 10
+            ):
+        '''
+        |- query by committee (max diag) chooses whichever instances have the highest variance
+        preds: individual tree predictions of XPool
+        '''
+        return preds.std(1).argsort()[::-1][:N],np.ones(N)
